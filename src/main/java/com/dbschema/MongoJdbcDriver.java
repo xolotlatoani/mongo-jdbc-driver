@@ -1,15 +1,20 @@
 package com.dbschema;
 
 import com.dbschema.mongo.DriverPropertyInfoHelper;
+import com.dbschema.mongo.MongoClientWrapper;
 import com.dbschema.mongo.MongoConnection;
+import com.dbschema.mongo.MongoService;
 import com.dbschema.mongo.mongosh.LazyShellHolder;
 import com.dbschema.mongo.mongosh.PrecalculatingShellHolder;
 import com.dbschema.mongo.mongosh.ShellHolder;
+import com.dbschema.mongo.oidc.OidcCallback;
+import com.mongodb.MongoCredential;
 import org.graalvm.polyglot.Engine;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.sql.*;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.logging.Logger;
@@ -32,6 +37,7 @@ public class MongoJdbcDriver implements Driver {
   private @Nullable ExecutorService executorService;
   private @Nullable Engine sharedEngine;
   private @NotNull ShellHolder shellHolder;
+  private MongoConnection mongoConnection;
 
   static {
     try {
@@ -91,7 +97,16 @@ public class MongoJdbcDriver implements Driver {
     synchronized (this) {
       ShellHolder shellHolder = this.shellHolder;
       this.shellHolder = createShellHolder();
-      return new MongoConnection(url, info, username, password, fetchDocumentsForMeta, shellHolder);
+      MongoCredential.OidcCallbackContext existingResult = Optional.ofNullable(this.mongoConnection)
+              .map(MongoConnection::getService)
+              .map(MongoService::getClient)
+              .map(MongoClientWrapper::getOidcCallback)
+              .map(OidcCallback::getCallbackContext)
+              .orElse(null);
+
+      this.mongoConnection = new MongoConnection(url, info, username, password, fetchDocumentsForMeta, shellHolder, existingResult);
+
+      return this.mongoConnection;
     }
   }
 
